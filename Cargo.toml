@@ -1,0 +1,13 @@
+[package]
+name = "stateful"
+version = "0.1.0"
+authors = ["kyle_coffey <kyle_coffey@affirmednetworks.com>"]
+edition = "2018"
+description = "Provides users with information about what your program is doing"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+crossbeam = "0.7"
+crossbeam-channel = "0.4"
+lazy_static = "1.4"
+parking_lot = "0.11"
