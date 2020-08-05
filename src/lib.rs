@@ -1,6 +1,9 @@
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Select;
 use crossbeam_channel::Sender;
+use crossterm::terminal;
+use crossterm::terminal::ClearType;
+use crossterm::{cursor, execute, style};
 use io::{stdout, BufRead, BufReader, Read, Write};
 use lazy_static::lazy_static;
 use parking_lot::Condvar;
@@ -56,7 +59,12 @@ pub fn run_with_status(
             let mut err_lock = err.lock();
             if !out_lock.is_empty() || !err_lock.is_empty() {
                 let mut stdout = stdout();
-                stdout.write_all(b"\x1b[2K\x1b[G")?;
+                execute!(
+                    stdout,
+                    terminal::Clear(ClearType::CurrentLine),
+                    cursor::MoveToColumn(0),
+                )
+                .unwrap();
                 stdout.write_all(&out_lock)?;
                 stdout.write_all(&err_lock)?;
                 stdout.flush()?;
@@ -118,17 +126,32 @@ fn spinner_thread(
                 let mut lock = SPINNER_MUTEX.lock();
                 SPINNER_TICKER.wait(&mut lock);
             }
-            eprint!(
-                "\x1b[2K\x1b[G\x1b[1;32m{}\x1b[0m {}",
-                spinner_chars[i], message
-            );
+            {
+                let mut stderr = io::stderr();
+                execute!(
+                    stderr,
+                    terminal::Clear(ClearType::CurrentLine),
+                    cursor::MoveToColumn(0),
+                    style::SetForegroundColor(style::Color::Green),
+                )
+                .unwrap();
+                write!(stderr, "{}", spinner_chars[i]).unwrap();
+                execute!(stderr, style::ResetColor {},).unwrap();
+                write!(stderr, " {}", message).unwrap();
+            }
             i = (i + 1) % (spinner_chars.len() - 1);
         }
-        eprintln!(
-            "\x1b[2K\x1b[G\x1b[1;32m{}\x1b[0m {}",
-            spinner_chars[spinner_chars.len() - 1],
-            done_message
-        );
+        let mut stderr = io::stderr();
+        execute!(
+            stderr,
+            terminal::Clear(ClearType::CurrentLine),
+            cursor::MoveToColumn(0),
+            style::SetForegroundColor(style::Color::Green),
+        )
+        .unwrap();
+        write!(stderr, "{}", spinner_chars[spinner_chars.len() - 1]).unwrap();
+        execute!(stderr, style::ResetColor {},).unwrap();
+        write!(stderr, " {}", done_message).unwrap();
     }
 }
 
@@ -193,8 +216,8 @@ mod tests {
             stopper,
         );
 
-        let mut command = Command::new("yum");
-        command.arg("info").arg("test");
+        let mut command = Command::new("yay");
+        command.arg("-Si").arg("test");
         status_message_sender.send("Sleeping...".into()).unwrap();
         done_message_sender.send("Slept!".into()).unwrap();
         spinner_activator_sender.send(()).unwrap();
