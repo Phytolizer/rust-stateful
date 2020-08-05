@@ -1,6 +1,6 @@
 [package]
 name = "stateful"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["kyle_coffey <kyle_coffey@affirmednetworks.com>"]
 edition = "2018"
 description = "Provides users with information about what your program is doing"
