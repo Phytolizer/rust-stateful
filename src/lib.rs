@@ -1,4 +1,4 @@
-use crossbeam::{bounded, SendError, TryRecvError, RecvError};
+use crossbeam::{bounded, RecvError, SendError, TryRecvError};
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Select;
 use crossbeam_channel::Sender;
@@ -18,7 +18,7 @@ use std::{
 pub fn run_closure<T, F: Fn() -> T>(
     message: Option<&str>,
     done_message: Option<&str>,
-    communicator: SpinnerCommunicator,
+    communicator: &SpinnerCommunicator,
     closure: F,
 ) -> Result<T, SendError<()>> {
     if let Some(message) = message {
@@ -182,13 +182,13 @@ fn spinner_thread(mut spinner: Spinner) {
     'spinner: loop {
         match receive_multiple(&[&spinner.activator, &spinner.stopper]) {
             Ok(i) => match i {
-                0 => {},
+                0 => {}
                 1 => break 'spinner,
                 _ => unreachable!(),
-            }
+            },
             Err(_) => continue,
         }
-        let message = match spinner.message_receiver.try_recv() {
+        let mut message = match spinner.message_receiver.try_recv() {
             Ok(m) => m,
             Err(TryRecvError::Empty) => String::new(),
             Err(e) => panic!(e),
@@ -209,6 +209,9 @@ fn spinner_thread(mut spinner: Spinner) {
                     style::SetForegroundColor(style::Color::Green),
                 )
                 .unwrap();
+                if let Ok(m) = spinner.message_receiver.try_recv() {
+                    message = m;
+                }
                 write!(stderr, "{}", spinner.state()).unwrap();
                 execute!(stderr, style::ResetColor {},).unwrap();
                 write!(stderr, " {}", message).unwrap();
@@ -251,11 +254,6 @@ mod tests {
     use super::*;
     use std::process::Command;
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-
-    #[test]
     fn test_run() {
         let spinner_communicator =
             spawn_spinner(&["/", "-", "\\", "|", "*"], Duration::from_millis(100));
@@ -263,14 +261,31 @@ mod tests {
         let res = run_closure(
             Some("Sleeping..."),
             Some("Slept"),
-            spinner_communicator,
+            &spinner_communicator,
+            || Command::new("sleep").arg("1").output().unwrap(),
+        )
+        .unwrap();
+
+        assert!(res.status.success());
+    }
+
+    #[test]
+    fn changing_message() {
+        let spinner_communicator =
+            spawn_spinner(&["/", "-", "\\", "|", "*"], Duration::from_millis(100));
+
+        let res = run_closure(
+            Some("Sleeping again..."),
+            Some("Finally done"),
+            &spinner_communicator,
             || {
-                Command::new("sleep")
-                    .arg("1")
-                    .spawn()
-                    .unwrap()
-                    .wait()
-                    .unwrap()
+                let mut child = Command::new("sleep").arg("5").spawn().unwrap();
+                thread::sleep(Duration::from_millis(2500));
+                spinner_communicator
+                    .status_message_sender
+                    .send("Still sleeping...".into())
+                    .unwrap();
+                child.wait().unwrap()
             },
         )
         .unwrap();
